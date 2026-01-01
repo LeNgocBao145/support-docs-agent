@@ -229,6 +229,32 @@ def main():
     """Main job orchestrator."""
     logger, log_file = setup_logging()
     
+    # Validate required environment variables
+    required_vars = [
+        'OPENAI_API_KEY',
+        'ZENDESK_API_URL', 
+        'ZENDESK_SUPPORT_BASE_URL'
+    ]
+    
+    missing_vars = [var for var in required_vars if not os.getenv(var)]
+    if missing_vars:
+        logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
+        logger.error("Please set all required environment variables and try again.")
+        return 1
+    
+    # Log optional configurations
+    optional_vars = {
+        'VECTOR_STORE_ID': 'Will auto-create if not provided',
+        'ASSISTANT_ID': 'Optional for vector store operations',
+        'DO_SPACES_KEY': 'Logs will not be uploaded to Spaces',
+        'DO_SPACES_SECRET': 'Logs will not be uploaded to Spaces',
+        'DO_SPACES_BUCKET': 'Logs will not be uploaded to Spaces'
+    }
+    
+    for var, description in optional_vars.items():
+        if not os.getenv(var):
+            logger.info(f"Optional: {var} not set - {description}")
+    
     # Pass logger to uploader module
     uploader.set_logger(logger)
     
