@@ -1,0 +1,30 @@
+name: optisigns-scraper
+
+jobs:
+- name: daily-scraper
+  source:
+    type: github
+    repo: LeNgocBao145/support-docs-agent
+    branch: main
+
+  build_command: pip install -r requirements.txt
+  run_command: python main.py
+
+  schedule: "0 2 * * *" # 02:00 UTC = 09:00 VN
+
+  envs:
+  - key: OPENAI_API_KEY
+    scope: RUN_TIME
+    value: ${OPENAI_API_KEY}
+  - key: ZENDESK_API_URL
+    scope: RUN_TIME
+    value: ${ZENDESK_API_URL}
+  - key: ZENDESK_SUPPORT_BASE_URL
+    scope: RUN_TIME
+    value: ${ZENDESK_SUPPORT_BASE_URL}
+  - key: ASSISTANT_ID
+    scope: RUN_TIME
+    value: ${ASSISTANT_ID}
+  - key: ENVIRONMENT
+    scope: RUN_TIME
+    value: production
