@@ -36,6 +36,38 @@ python scrape_articles.py              # Only scrape articles
 python upload_to_vector_store.py       # Only upload to vector store
 ```
 
+
+## Chunking Strategy & Vector Store Upload
+
+### Chunking Strategy
+
+This project relies on **OpenAI-managed automatic chunking** when uploading Markdown files to the Vector Store.
+
+Rationale:
+- The support articles are already well-structured with semantic Markdown headings (`#`, `##`, `###`).
+- OpenAI’s native chunking is optimized for retrieval performance and respects document structure.
+- This avoids overfitting chunk sizes or introducing incorrect manual splits that could degrade answer quality.
+
+No manual chunk size or overlap is specified in code. Each Markdown file is uploaded as a single logical document, and OpenAI handles internal segmentation during embedding.
+
+### Files & Chunks Logging
+
+OpenAI’s Vector Store API does **not currently expose**:
+- The exact number of chunks generated per file
+- The internal chunk boundaries or token counts
+
+Because of this limitation:
+- The application logs **file-level operations only** (added, updated, skipped).
+- Any attempt to locally estimate chunk counts would be inaccurate and misleading.
+
+The following metrics are reliably logged:
+- Number of Markdown files uploaded
+- Number of files updated (content hash changed)
+- Number of files skipped (no change detected)
+
+This ensures correctness and transparency while respecting API constraints.
+
+
 ## Daily Job Logs
 
 Job execution logs are automatically uploaded to DigitalOcean Spaces and accessible via signed URLs:
