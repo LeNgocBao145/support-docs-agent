@@ -1,6 +1,6 @@
-requests==2.31.0
-beautifulsoup4==4.12.2
-html2text==2024.2.26
-openai==1.59.0
-python-dotenv==1.0.0
-boto3==1.26.165
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+html2text>=2024.2.26
+openai>=1.50.0
+python-dotenv>=1.0.0
+boto3>=1.26.0
