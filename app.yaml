@@ -2,15 +2,14 @@ name: optisigns-scraper
 
 jobs:
 - name: daily-scraper
-  source:
-    type: github
+  kind: SCHEDULED
+  github:
     repo: LeNgocBao145/support-docs-agent
     branch: main
-
   build_command: pip install -r requirements.txt
   run_command: python main.py
-
-  schedule: "0 2 * * *" # 02:00 UTC = 09:00 VN
+  schedule:
+    cron: "0 2 * * *" # 02:00 UTC = 09:00 VN
 
   envs:
   - key: OPENAI_API_KEY
