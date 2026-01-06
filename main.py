@@ -77,6 +77,123 @@ def setup_logging():
     return logger, last_run_log
 
 
+def download_state_from_spaces():
+    """Download state files from DigitalOcean Spaces if they don't exist locally."""
+    if not HAS_BOTO3:
+        return False
+    
+    logger = logging.getLogger("optisigns_job")
+    
+    # Get credentials from environment
+    spaces_key = os.getenv("DO_SPACES_KEY")
+    spaces_secret = os.getenv("DO_SPACES_SECRET")
+    spaces_bucket = os.getenv("DO_SPACES_BUCKET")
+    spaces_region = os.getenv("DO_SPACES_REGION", "nyc3")
+    
+    if not all([spaces_key, spaces_secret, spaces_bucket]):
+        logger.warning("DigitalOcean Spaces credentials not set, skipping state download")
+        return False
+    
+    try:
+        # Initialize S3 client
+        s3 = boto3.client(
+            's3',
+            region_name=spaces_region,
+            endpoint_url=f'https://{spaces_region}.digitaloceanspaces.com',
+            aws_access_key_id=spaces_key,
+            aws_secret_access_key=spaces_secret,
+            config=Config(signature_version='s3v4')
+        )
+        
+        state_files = ['upload_history.json', 'vector_store_mapping.json']
+        downloaded_count = 0
+        
+        for filename in state_files:
+            local_path = Path(filename)
+            
+            # Skip if file already exists locally
+            if local_path.exists():
+                logger.info(f"State file already exists locally: {filename}")
+                continue
+            
+            try:
+                logger.info(f"Downloading {filename} from Spaces...")
+                s3.download_file(spaces_bucket, filename, str(local_path))
+                logger.info(f"[OK] Downloaded {filename} from Spaces")
+                downloaded_count += 1
+            except s3.exceptions.NoSuchKey:
+                logger.info(f"State file not found in Spaces: {filename} (will create new)")
+            except Exception as e:
+                logger.warning(f"Failed to download {filename}: {e}")
+        
+        if downloaded_count > 0:
+            logger.info(f"Downloaded {downloaded_count} state files from Spaces")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        logger.error(f"Failed to download state from Spaces: {e}")
+        return False
+
+
+def upload_state_to_spaces():
+    """Upload state files to DigitalOcean Spaces."""
+    if not HAS_BOTO3:
+        return False
+    
+    logger = logging.getLogger("optisigns_job")
+    
+    # Get credentials from environment
+    spaces_key = os.getenv("DO_SPACES_KEY")
+    spaces_secret = os.getenv("DO_SPACES_SECRET")
+    spaces_bucket = os.getenv("DO_SPACES_BUCKET")
+    spaces_region = os.getenv("DO_SPACES_REGION", "nyc3")
+    
+    if not all([spaces_key, spaces_secret, spaces_bucket]):
+        logger.warning("DigitalOcean Spaces credentials not set, skipping state upload")
+        return False
+    
+    try:
+        # Initialize S3 client
+        s3 = boto3.client(
+            's3',
+            region_name=spaces_region,
+            endpoint_url=f'https://{spaces_region}.digitaloceanspaces.com',
+            aws_access_key_id=spaces_key,
+            aws_secret_access_key=spaces_secret,
+            config=Config(signature_version='s3v4')
+        )
+        
+        state_files = ['upload_history.json', 'vector_store_mapping.json']
+        uploaded_count = 0
+        
+        for filename in state_files:
+            local_path = Path(filename)
+            
+            if not local_path.exists():
+                logger.warning(f"State file not found locally: {filename}")
+                continue
+            
+            try:
+                logger.info(f"Uploading {filename} to Spaces...")
+                s3.upload_file(str(local_path), spaces_bucket, filename)
+                logger.info(f"[OK] Uploaded {filename} to Spaces")
+                uploaded_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to upload {filename}: {e}")
+        
+        if uploaded_count > 0:
+            logger.info(f"Uploaded {uploaded_count} state files to Spaces")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        logger.error(f"Failed to upload state to Spaces: {e}")
+        return False
+
+
 def upload_logs_to_spaces(logger, last_run_log):
     """Upload logs to DigitalOcean Spaces."""
     if not HAS_BOTO3:
@@ -136,28 +253,55 @@ def upload_logs_to_spaces(logger, last_run_log):
             )
             
             urls['last_run_url'] = last_run_url
-            logger.info(f"✓ Uploaded last_run.log to Spaces")
+            logger.info(f"[OK] Uploaded last_run.log to Spaces")
         else:
             logger.warning(f"last_run.log not found or empty, skipping")
         
-        # Upload upload.log with date prefix (for daily logs)
+        # Upload upload.log as daily.log with APPEND mode
         upload_log = logs_dir / "upload.log"
         if upload_log.exists() and upload_log.stat().st_size > 0:
-            logger.info(f"Uploading {upload_log.name} ({upload_log.stat().st_size} bytes)")
+            logger.info(f"Uploading {upload_log.name} ({upload_log.stat().st_size} bytes) with append mode")
+            
+            # Try to download existing daily.log from Spaces
+            existing_content = ""
+            temp_daily_log = logs_dir / "temp_daily.log"
+            try:
+                s3.download_file(spaces_bucket, 'daily.log', str(temp_daily_log))
+                existing_content = temp_daily_log.read_text(encoding='utf-8')
+                temp_daily_log.unlink()
+                logger.info(f"Downloaded existing daily.log ({len(existing_content)} bytes)")
+            except Exception as e:
+                logger.info(f"No existing daily.log found (will create new): {e}")
+            
+            # Read new content
+            new_content = upload_log.read_text(encoding='utf-8')
+            
+            # Merge: existing + new
+            merged_content = existing_content + new_content
+            
+            # Write merged content to temporary file
+            merged_log = logs_dir / "merged_daily.log"
+            merged_log.write_text(merged_content, encoding='utf-8')
+            
+            # Upload merged content
             s3.upload_file(
-                str(upload_log),
+                str(merged_log),
                 spaces_bucket,
-                f'daily.log'
+                'daily.log'
             )
+            
+            # Clean up temporary file
+            merged_log.unlink()
+            
             # Generate signed URL (valid for 7 days - max allowed by DigitalOcean)
             daily_log_url = s3.generate_presigned_url(
                 'get_object',
-                Params={'Bucket': spaces_bucket, 'Key': f'daily.log'},
+                Params={'Bucket': spaces_bucket, 'Key': 'daily.log'},
                 ExpiresIn=7*24*60*60  # 7 days (604800 seconds - max allowed)
             )
             
             urls['daily_log_url'] = daily_log_url
-            logger.info(f"✓ Uploaded upload.log to Spaces")
+            logger.info(f"[OK] Uploaded daily.log to Spaces (total size: {len(merged_content)} bytes)")
         else:
             logger.warning(f"upload.log not found or empty, skipping")
         
@@ -288,17 +432,25 @@ def main():
     logger.info("=" * 80)
     
     try:
-        # Step 1: Scrape articles
-        logger.info("\n[STEP 1/2] Scraping articles...")
+        # Step 1: Download state from Spaces (if missing locally)
+        logger.info("\n[STEP 1/4] Checking state files...")
+        download_state_from_spaces()
+        
+        # Step 2: Scrape articles
+        logger.info("\n[STEP 2/4] Scraping articles...")
         scraped_count = scrape_and_save_articles()
         logger.info(f"Scraped {scraped_count} articles")
         
-        # Step 2: Upload to Vector Store
-        logger.info("\n[STEP 2/2] Uploading to Vector Store...")
+        # Step 3: Upload to Vector Store
+        logger.info("\n[STEP 3/4] Uploading to Vector Store...")
         upload_result = uploader.main()
         
-        # Step 3: Cleanup - Remove articles folder to optimize storage
-        logger.info("\n[STEP 3/3] Cleaning up temporary files...")
+        # Step 3.5: Upload state to Spaces (after vector store upload)
+        logger.info("\n[STEP 3.5/4] Uploading state to Spaces...")
+        upload_state_to_spaces()
+        
+        # Step 4: Cleanup - Remove articles folder to optimize storage
+        logger.info("\n[STEP 4/4] Cleaning up temporary files...")
         articles_dir = Path("articles")
         if articles_dir.exists():
             shutil.rmtree(articles_dir)
@@ -317,8 +469,8 @@ def main():
         logger.info(f"Vector Store ID: {upload_result['vector_store_id']}")
         logger.info("-" * 80)
         
-        # Step 4: Upload logs to DigitalOcean Spaces (if configured)
-        logger.info("\n[STEP 4/4] Uploading logs to DigitalOcean Spaces...")            
+        # Step 5: Upload logs to DigitalOcean Spaces (if configured)
+        logger.info("\n[STEP 5/5] Uploading logs to DigitalOcean Spaces...")            
         
         
         spaces_result = upload_logs_to_spaces(logger, log_file)

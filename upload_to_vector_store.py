@@ -89,9 +89,6 @@ def get_markdown_files() -> List[Path]:
     return sorted(ARTICLES_DIR.glob("*.md"))
 
 
-# =====================================================
-# Vector Store helpers
-# =====================================================
 def get_or_create_vector_store(client: OpenAI) -> str:    
     if VECTOR_STORE_ID_ENV:
         try:
@@ -133,7 +130,6 @@ def delete_old_file_from_vector_store(
         logger.info(f"Deleted old file from vector store: {old_file_id}")
     except Exception as e:
         logger.warning(f"Failed to delete old file {old_file_id}: {e}")
-
 
 # =====================================================
 # Main workflow
