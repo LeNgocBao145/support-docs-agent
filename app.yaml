@@ -24,6 +24,18 @@ jobs:
   - key: ASSISTANT_ID
     scope: RUN_TIME
     value: ${ASSISTANT_ID}
+  - key: DO_SPACES_KEY
+    scope: RUN_TIME
+    value: ${DO_SPACES_KEY}
+  - key: DO_SPACES_SECRET
+    scope: RUN_TIME
+    value: ${DO_SPACES_SECRET}
+  - key: DO_SPACES_BUCKET
+    scope: RUN_TIME
+    value: ${DO_SPACES_BUCKET}
+  - key: DO_SPACES_REGION
+    scope: RUN_TIME
+    value: ${DO_SPACES_REGION}
   - key: ENVIRONMENT
     scope: RUN_TIME
     value: production

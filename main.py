@@ -123,16 +123,15 @@ def upload_logs_to_spaces(logger, last_run_log):
         # Upload upload.log with date prefix (for daily logs)
         upload_log = logs_dir / "upload.log"
         if upload_log.exists():
-            date_prefix = datetime.now().strftime("%Y-%m-%d")
             s3.upload_file(
                 str(upload_log),
                 spaces_bucket,
-                f'logs/{date_prefix}.log'
+                f'daily.log'
             )
             # Generate signed URL (valid for 7 days - max allowed by DigitalOcean)
             daily_log_url = s3.generate_presigned_url(
                 'get_object',
-                Params={'Bucket': spaces_bucket, 'Key': f'logs/{date_prefix}.log'},
+                Params={'Bucket': spaces_bucket, 'Key': f'daily.log'},
                 ExpiresIn=7*24*60*60  # 7 days (604800 seconds - max allowed)
             )
             
