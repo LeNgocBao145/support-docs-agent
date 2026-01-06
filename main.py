@@ -19,9 +19,11 @@ from dotenv import load_dotenv
 
 try:
     import boto3
+    from botocore.config import Config
     HAS_BOTO3 = True
 except ImportError:
     HAS_BOTO3 = False
+    Config = None
 
 # Import scraper and uploader modules
 sys.path.insert(0, str(Path(__file__).parent))
@@ -81,6 +83,16 @@ def upload_logs_to_spaces(logger, last_run_log):
         logger.warning("boto3 not installed, skipping upload to Spaces")
         return None
     
+    # Ensure logs directory exists
+    logs_dir = Path("logs")
+    logs_dir.mkdir(exist_ok=True)
+    
+    # Check if logs directory has any content
+    log_files = list(logs_dir.glob("*.log"))
+    if not log_files:
+        logger.warning(f"No log files found in {logs_dir}, skipping upload")
+        return None
+    
     # Get credentials from environment
     spaces_key = os.getenv("DO_SPACES_KEY")
     spaces_secret = os.getenv("DO_SPACES_SECRET")
@@ -92,20 +104,25 @@ def upload_logs_to_spaces(logger, last_run_log):
         return None
     
     try:
-        # Initialize S3 client
+        # Initialize S3 client with S3v4 signature for DigitalOcean Spaces
         s3 = boto3.client(
             's3',
             region_name=spaces_region,
             endpoint_url=f'https://{spaces_region}.digitaloceanspaces.com',
             aws_access_key_id=spaces_key,
-            aws_secret_access_key=spaces_secret
+            aws_secret_access_key=spaces_secret,
+            config=Config(signature_version='s3v4')
         )
         
-        logs_dir = Path("logs")
         urls = {}
         
+        # Flush all log handlers to ensure logs are written to disk
+        for handler in logger.handlers:
+            handler.flush()
+        
         # Upload last_run.log (overwrite)
-        if last_run_log.exists():
+        if last_run_log.exists() and last_run_log.stat().st_size > 0:
+            logger.info(f"Uploading {last_run_log.name} ({last_run_log.stat().st_size} bytes)")
             s3.upload_file(
                 str(last_run_log),
                 spaces_bucket,
@@ -119,10 +136,14 @@ def upload_logs_to_spaces(logger, last_run_log):
             )
             
             urls['last_run_url'] = last_run_url
+            logger.info(f"✓ Uploaded last_run.log to Spaces")
+        else:
+            logger.warning(f"last_run.log not found or empty, skipping")
         
         # Upload upload.log with date prefix (for daily logs)
         upload_log = logs_dir / "upload.log"
-        if upload_log.exists():
+        if upload_log.exists() and upload_log.stat().st_size > 0:
+            logger.info(f"Uploading {upload_log.name} ({upload_log.stat().st_size} bytes)")
             s3.upload_file(
                 str(upload_log),
                 spaces_bucket,
@@ -136,10 +157,14 @@ def upload_logs_to_spaces(logger, last_run_log):
             )
             
             urls['daily_log_url'] = daily_log_url
+            logger.info(f"✓ Uploaded upload.log to Spaces")
+        else:
+            logger.warning(f"upload.log not found or empty, skipping")
         
+        logger.info(f"Successfully uploaded {len(urls)} log files to Spaces")
         return urls
     except Exception as e:
-        logger.error(f"Failed to upload logs to Spaces: {e}")
+        logger.error(f"Failed to upload logs to Spaces: {e}", exc_info=True)
         return None
         
 
