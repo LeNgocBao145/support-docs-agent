@@ -126,10 +126,22 @@ def delete_old_file_from_vector_store(
         return
 
     try:
-        client.vector_stores.files.delete(vector_store_id, old_file_id)
-        logger.info(f"Deleted old file from vector store: {old_file_id}")
+        # First, remove file from vector store
+        client.vector_stores.files.delete(
+            vector_store_id=vector_store_id,
+            file_id=old_file_id
+        )
+        logger.info(f"Removed old file from vector store: {old_file_id}")
+        
+        # Then delete the file object itself
+        try:
+            client.files.delete(old_file_id)
+            logger.info(f"Deleted old file object: {old_file_id}")
+        except Exception as e:
+            logger.warning(f"Failed to delete file object {old_file_id}: {e}")
+            
     except Exception as e:
-        logger.warning(f"Failed to delete old file {old_file_id}: {e}")
+        logger.warning(f"Failed to remove old file {old_file_id} from vector store: {e}")
 
 # =====================================================
 # Main workflow
