@@ -138,7 +138,9 @@ def delete_old_file_from_vector_store(
             client.files.delete(old_file_id)
             logger.info(f"Deleted old file object: {old_file_id}")
         except Exception as e:
-            logger.warning(f"Failed to delete file object {old_file_id}: {e}")
+            # 404 is expected if file was already deleted
+            if "404" not in str(e):
+                logger.warning(f"Failed to delete file object {old_file_id}: {e}")
             
     except Exception as e:
         logger.warning(f"Failed to remove old file {old_file_id} from vector store: {e}")
